@@ -478,7 +478,33 @@ class WyzeIOTCSession:
         alt = self.preferred_frame_size + (1 if self.preferred_frame_size == 3 else 3)
         ignore_res = {self.preferred_frame_size, int(os.getenv("IGNORE_RES", alt))}
         last = {"key_frame": 0, "key_time": 0, "frame": 0, "time": time.time()}
-        sleep_interval = (1 / fps) - 0.02
+
+        last_data = next_estimated_frame = time.time()
+        last_elapsed = 0
+        max_sleep_interval = (1 / fps)
+        min_sleep_interval = 1 / 60
+        smooth_factor = .9
+        had_data = False
+
+        def do_sleep():
+            now = time.time()
+            sleep_time = (next_estimated_frame - now) * smooth_factor
+            sleep_time = min(max_sleep_interval, sleep_time)
+            sleep_time = max(min_sleep_interval, sleep_time)
+            # print('sleep', sleep_time)
+            time.sleep(sleep_time)
+
+        def update_sleep_with_data():
+            nonlocal next_estimated_frame, last_data, had_data, last_elapsed
+            had_data = True
+            now = time.time()
+            elapsed = now - last_data
+            average_elapsed = (elapsed + last_elapsed) / 2
+            last_data = now
+            next_estimated_frame = now + average_elapsed
+            last_elapsed = elapsed
+            # print("data", elapsed)
+
         while (
             self.state == WyzeIOTCSessionState.AUTHENTICATION_SUCCEEDED
             and self.stream_state.value > 1
@@ -492,13 +518,14 @@ class WyzeIOTCSession:
                     continue
                 self.state = WyzeIOTCSessionState.CONNECTING_FAILED
                 raise Exception(f"Stream did not receive a frame for over {timeout}s")
-            time.sleep(max(sleep_interval - delta, 0.01))
 
+            do_sleep()
             errno, frame_data, frame_info, _ = tutk.av_recv_frame_data(
                 self.tutk_platform_lib, self.av_chan_id
             )
+            if frame_data:
+                update_sleep_with_data()
             if errno < 0:
-                time.sleep(sleep_interval)
                 if errno == tutk.AV_ER_DATA_NOREADY:
                     yield b""
                     continue
