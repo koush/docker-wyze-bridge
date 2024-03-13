@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from hashlib import md5
 from os import environ, getenv
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 from requests import Response, get, post
 from wyzecam.api_models import WyzeAccount, WyzeCamera, WyzeCredential
@@ -400,7 +400,7 @@ def sort_dict(payload: dict) -> str:
     return json.dumps(dict(sorted(payload.items())), separators=(",", ":"))
 
 
-def sign_msg(app_id: str, msg: str | dict, token: str = "") -> str:
+def sign_msg(app_id: str, msg: Union[str, dict], token: str = "") -> str:
     key = md5((token + environ[app_id]).encode()).hexdigest().encode()
     msg = sort_dict(msg) if isinstance(msg, dict) else msg
 
